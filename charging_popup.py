@@ -3,7 +3,8 @@ import psutil
 import ctypes
 from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QRect
-from PyQt5.QtGui import QMovie, QFont
+from PyQt5.QtGui import QMovie, QFont, QPixmap
+import os
 
 
 def is_locked():
@@ -42,8 +43,7 @@ class ChargingPopup(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint | 
             Qt.WindowStaysOnTopHint | 
-            Qt.Tool |
-            Qt.WindowTransparentForInput  # Allow clicks to pass through
+            Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)  # Auto cleanup
@@ -52,13 +52,31 @@ class ChargingPopup(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # Animation
+        # Animation - Create NEW QMovie instance each time
         self.label_anim = QLabel(self)
-        self.movie = QMovie("charging.gif")
-        if not self.movie.isValid():
-            print("Warning: charging.gif not found or invalid")
-        self.label_anim.setMovie(self.movie)
-        self.movie.start()
+        
+        # Check if GIF exists
+        gif_path = "charging.gif"
+        if not os.path.exists(gif_path):
+            # Fallback: show text if GIF not found
+            self.label_anim.setText("⚡")
+            self.label_anim.setFont(QFont("Segoe UI", 48))
+            self.label_anim.setStyleSheet("color: white;")
+            print(f"Warning: {gif_path} not found")
+        else:
+            # Create a NEW QMovie instance for each popup
+            self.movie = QMovie(gif_path)
+            
+            if self.movie.isValid():
+                self.label_anim.setMovie(self.movie)
+                self.movie.start()
+            else:
+                # Fallback if GIF is invalid
+                self.label_anim.setText("⚡")
+                self.label_anim.setFont(QFont("Segoe UI", 48))
+                self.label_anim.setStyleSheet("color: white;")
+                print(f"Warning: {gif_path} is not a valid GIF file")
+        
         layout.addWidget(self.label_anim, alignment=Qt.AlignCenter)
 
         # Battery info text
@@ -100,8 +118,16 @@ class ChargingPopup(QWidget):
         self.fade_anim.setDuration(500)
         self.fade_anim.setStartValue(1.0)
         self.fade_anim.setEndValue(0.0)
-        self.fade_anim.finished.connect(self.close)
+        self.fade_anim.finished.connect(self.cleanup_and_close)
         self.fade_anim.start()
+
+    def cleanup_and_close(self):
+        """Cleanup resources before closing"""
+        # Stop and delete the movie to free resources
+        if hasattr(self, 'movie'):
+            self.movie.stop()
+            self.movie.deleteLater()
+        self.close()
 
 
 class BatteryMonitor(QWidget):
@@ -122,6 +148,8 @@ class BatteryMonitor(QWidget):
         
         # Keep track of active popup
         self.active_popup = None
+        
+        print("Battery monitor started. Waiting for charger plug-in events...")
 
     def check_battery(self):
         """Check battery status and show popup if just plugged in"""
@@ -134,28 +162,64 @@ class BatteryMonitor(QWidget):
             
             # Charger just plugged in
             if current_plugged and not self.last_plugged:
+                print("Charger plugged in! Showing popup...")
+                
                 # Clean up old popup if exists
                 if self.active_popup:
                     self.active_popup.close()
+                    self.active_popup = None
                 
-                # Get battery info
+                # Get battery info with retry for time estimation
                 percent = int(battery.percent)
                 time_left = format_time_left(battery.secsleft)
                 
-                # Determine position based on lock state
-                position = "center" if is_locked() else "right"
-                
-                # Show new popup
-                self.active_popup = ChargingPopup(percent, time_left, position)
-                self.active_popup.show()
+                # If time is not available yet, wait and retry
+                if battery.secsleft == psutil.POWER_TIME_UNLIMITED or battery.secsleft < 0:
+                    # Retry after 1 second to get accurate time
+                    QTimer.singleShot(1000, lambda: self.show_popup_with_retry(percent))
+                else:
+                    # Show popup immediately with time info
+                    position = "center" if is_locked() else "right"
+                    self.active_popup = ChargingPopup(percent, time_left, position)
+                    self.active_popup.show()
             
             self.last_plugged = current_plugged
             
         except Exception as e:
             print(f"Error checking battery: {e}")
+    
+    def show_popup_with_retry(self, initial_percent):
+        """Show popup after retrying to get accurate battery time"""
+        try:
+            battery = psutil.sensors_battery()
+            if not battery:
+                return
+            
+            percent = int(battery.percent)
+            time_left = format_time_left(battery.secsleft)
+            
+            print(f"Battery info: {percent}%, Time left: {time_left}, Raw seconds: {battery.secsleft}")
+            
+            # Determine position based on lock state
+            position = "center" if is_locked() else "right"
+            
+            # Show popup
+            self.active_popup = ChargingPopup(percent, time_left, position)
+            self.active_popup.show()
+            
+        except Exception as e:
+            print(f"Error showing popup with retry: {e}")
 
 
 def main():
+    # Check if charging.gif exists
+    if not os.path.exists("charging.gif"):
+        print("=" * 50)
+        print("WARNING: charging.gif not found!")
+        print("Please make sure charging.gif is in the same folder as this script.")
+        print("The popup will show a ⚡ emoji instead.")
+        print("=" * 50)
+    
     app = QApplication(sys.argv)
     
     # Create battery monitor
