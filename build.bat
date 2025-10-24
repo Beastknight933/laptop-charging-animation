@@ -29,50 +29,51 @@ powershell -Command "& {$bmp = New-Object System.Drawing.Bitmap(32,32); $g = [Sy
 echo Building executable...
 pyinstaller --onefile --windowed --name HPChargingMonitor --icon=icon.ico --clean charging_popup.py
 
+:: Create installer directory with executable
+if not exist "installer" mkdir "installer"
+copy "dist\HPChargingMonitor.exe" "installer\"
+
 :: Create super simple installer
 echo Creating installer...
-echo @echo off > "HPChargingMonitorInstaller.bat"
-echo title HP Charging Monitor Installer >> "HPChargingMonitorInstaller.bat"
-echo color 0A >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo echo ╔══════════════════════════════════════════════════════════════╗ >> "HPChargingMonitorInstaller.bat"
-echo echo ║        HP Charging Monitor Installer                       ║ >> "HPChargingMonitorInstaller.bat"
-echo echo ╚══════════════════════════════════════════════════════════════╝ >> "HPChargingMonitorInstaller.bat"
-echo echo. >> "HPChargingMonitorInstaller.bat"
-echo echo Installing HP Charging Monitor... >> "HPChargingMonitorInstaller.bat"
-echo echo. >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo :: Check admin >> "HPChargingMonitorInstaller.bat"
-echo net session ^>nul 2^>^&1 ^|^| ^(echo [ERROR] Run as administrator! ^& pause ^& exit /b 1^) >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo set "INSTALL_DIR=%%PROGRAMFILES%%\HP Charging Monitor" >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo echo [1/3] Installing files... >> "HPChargingMonitorInstaller.bat"
-echo if not exist "%%INSTALL_DIR%%" mkdir "%%INSTALL_DIR%%" >> "HPChargingMonitorInstaller.bat"
-echo copy "HPChargingMonitor.exe" "%%INSTALL_DIR%%\" >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo echo [2/3] Creating shortcuts... >> "HPChargingMonitorInstaller.bat"
-echo powershell -Command "& {$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%%USERPROFILE%%\Desktop\HP Charging Monitor.lnk'); $Shortcut.TargetPath = '%%INSTALL_DIR%%\HPChargingMonitor.exe'; $Shortcut.Save()}" >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo echo [3/3] Setting auto-startup... >> "HPChargingMonitorInstaller.bat"
-echo reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "HP Charging Monitor" /t REG_SZ /d "%%INSTALL_DIR%%\HPChargingMonitor.exe" /f >> "HPChargingMonitorInstaller.bat"
-echo. >> "HPChargingMonitorInstaller.bat"
-echo echo ╔══════════════════════════════════════════════════════════════╗ >> "HPChargingMonitorInstaller.bat"
-echo echo ║                    Installation Complete!                  ║ >> "HPChargingMonitorInstaller.bat"
-echo echo ╚══════════════════════════════════════════════════════════════╝ >> "HPChargingMonitorInstaller.bat"
-echo echo. >> "HPChargingMonitorInstaller.bat"
-echo echo HP Charging Monitor installed successfully! >> "HPChargingMonitorInstaller.bat"
-echo echo - Desktop shortcut created >> "HPChargingMonitorInstaller.bat"
-echo echo - Auto-startup enabled >> "HPChargingMonitorInstaller.bat"
-echo echo. >> "HPChargingMonitorInstaller.bat"
-echo echo Starting HP Charging Monitor... >> "HPChargingMonitorInstaller.bat"
-echo start "" "%%INSTALL_DIR%%\HPChargingMonitor.exe" >> "HPChargingMonitorInstaller.bat"
-echo echo. >> "HPChargingMonitorInstaller.bat"
-echo echo Look for the battery icon in your system tray! >> "HPChargingMonitorInstaller.bat"
-echo pause >> "HPChargingMonitorInstaller.bat"
-
-:: Copy files to installer
-copy "dist\HPChargingMonitor.exe" "HPChargingMonitorInstaller.bat" >nul
+echo @echo off > "installer\install.bat"
+echo title HP Charging Monitor Installer >> "installer\install.bat"
+echo color 0A >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo echo ╔══════════════════════════════════════════════════════════════╗ >> "installer\install.bat"
+echo echo ║        HP Charging Monitor Installer                       ║ >> "installer\install.bat"
+echo echo ╚══════════════════════════════════════════════════════════════╝ >> "installer\install.bat"
+echo echo. >> "installer\install.bat"
+echo echo Installing HP Charging Monitor... >> "installer\install.bat"
+echo echo. >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo :: Check admin >> "installer\install.bat"
+echo net session ^>nul 2^>^&1 ^|^| ^(echo [ERROR] Run as administrator! ^& pause ^& exit /b 1^) >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo set "INSTALL_DIR=%%PROGRAMFILES%%\HP Charging Monitor" >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo echo [1/3] Installing files... >> "installer\install.bat"
+echo if not exist "%%INSTALL_DIR%%" mkdir "%%INSTALL_DIR%%" >> "installer\install.bat"
+echo copy "HPChargingMonitor.exe" "%%INSTALL_DIR%%\" >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo echo [2/3] Creating shortcuts... >> "installer\install.bat"
+echo powershell -Command "& {$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%%USERPROFILE%%\Desktop\HP Charging Monitor.lnk'); $Shortcut.TargetPath = '%%INSTALL_DIR%%\HPChargingMonitor.exe'; $Shortcut.Save()}" >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo echo [3/3] Setting auto-startup... >> "installer\install.bat"
+echo reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "HP Charging Monitor" /t REG_SZ /d "%%INSTALL_DIR%%\HPChargingMonitor.exe" /f >> "installer\install.bat"
+echo. >> "installer\install.bat"
+echo echo ╔══════════════════════════════════════════════════════════════╗ >> "installer\install.bat"
+echo echo ║                    Installation Complete!                  ║ >> "installer\install.bat"
+echo echo ╚══════════════════════════════════════════════════════════════╝ >> "installer\install.bat"
+echo echo. >> "installer\install.bat"
+echo echo HP Charging Monitor installed successfully! >> "installer\install.bat"
+echo echo - Desktop shortcut created >> "installer\install.bat"
+echo echo - Auto-startup enabled >> "installer\install.bat"
+echo echo. >> "installer\install.bat"
+echo echo Starting HP Charging Monitor... >> "installer\install.bat"
+echo start "" "%%INSTALL_DIR%%\HPChargingMonitor.exe" >> "installer\install.bat"
+echo echo. >> "installer\install.bat"
+echo echo Look for the battery icon in your system tray! >> "installer\install.bat"
+echo pause >> "installer\install.bat"
 
 :: Cleanup
 del "icon.ico" 2>nul
@@ -84,9 +85,9 @@ echo ║                    Build Complete!                          ║
 echo ╚══════════════════════════════════════════════════════════════╝
 echo.
 echo ✓ Executable: dist\HPChargingMonitor.exe
-echo ✓ Installer: HPChargingMonitorInstaller.bat
+echo ✓ Installer: installer\install.bat
 echo.
-echo Ready for distribution! Just share HPChargingMonitorInstaller.bat
+echo Ready for distribution! Share the 'installer' folder
 echo.
 
 pause

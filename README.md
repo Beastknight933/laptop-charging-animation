@@ -5,11 +5,11 @@ Like installing Google Chrome - just double-click and done!
 ## 🚀 **For Developers (Build):**
 
 1. **Right-click `build.bat`** → "Run as administrator"
-2. **Done!** - Creates `HPChargingMonitorInstaller.bat`
+2. **Done!** - Creates `installer` folder
 
 ## 📦 **For Users (Install):**
 
-1. **Right-click `HPChargingMonitorInstaller.bat`** → "Run as administrator"  
+1. **Right-click `installer\install.bat`** → "Run as administrator"  
 2. **Done!** - Desktop shortcut + auto-startup
 
 ## ✨ **Features:**
@@ -22,8 +22,8 @@ Like installing Google Chrome - just double-click and done!
 
 ## 🎯 **That's It!**
 
-- **Build:** `build.bat` (creates installer)
-- **Distribute:** `HPChargingMonitorInstaller.bat` (one file)
-- **Install:** Double-click installer (like Chrome)
+- **Build:** `build.bat` (creates installer folder)
+- **Distribute:** `installer` folder (contains everything)
+- **Install:** Double-click `installer\install.bat` (like Chrome)
 
 Your drunk grandma could install this! 🍷
