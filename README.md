@@ -5,7 +5,9 @@ Like installing Google Chrome - just double-click and done!
 ## 🚀 **For Developers (Build):**
 
 1. **Right-click `build.bat`** → "Run as administrator"
-2. **Done!** - Creates `installer` folder
+2. **Wait for completion** - Creates `installer` folder with:
+   - `HPChargingMonitor.exe` (standalone executable)
+   - `install.bat` (simple installer)
 
 ## 📦 **For Users (Install):**
 
