@@ -1,10 +1,23 @@
 import sys
 import psutil
 import ctypes
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QRect
-from PyQt5.QtGui import QMovie, QFont, QPixmap
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QRect, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QPainter, QColor, QBrush
 import os
+import time
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('charging_monitor.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 def is_locked():
@@ -35,6 +48,61 @@ def format_time_left(secs):
         return "Almost done"
 
 
+class AnimatedChargingWidget(QLabel):
+    """Custom widget that creates a CSS-like charging animation"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.animation_timer = QTimer()
+        self.animation_timer.timeout.connect(self.update_animation)
+        self.animation_step = 0
+        self.setFixedSize(80, 80)
+        self.setStyleSheet("""
+            QLabel {
+                background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                    stop:0 rgba(255, 255, 255, 0.9),
+                    stop:0.3 rgba(255, 255, 255, 0.7),
+                    stop:0.6 rgba(255, 255, 255, 0.4),
+                    stop:1 rgba(255, 255, 255, 0.1));
+                border-radius: 40px;
+                border: 3px solid rgba(255, 255, 255, 0.8);
+            }
+        """)
+        
+    def start_animation(self):
+        """Start the charging animation"""
+        self.animation_timer.start(100)  # Update every 100ms
+        
+    def stop_animation(self):
+        """Stop the charging animation"""
+        self.animation_timer.stop()
+        
+    def update_animation(self):
+        """Update the animation frame"""
+        self.animation_step = (self.animation_step + 1) % 20
+        
+        # Create pulsing effect
+        intensity = 0.3 + 0.7 * (1 + (self.animation_step % 10) / 10)
+        opacity = 0.4 + 0.6 * (1 + (self.animation_step % 15) / 15)
+        
+        self.setStyleSheet(f"""
+            QLabel {{
+                background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                    stop:0 rgba(255, 255, 255, {opacity}),
+                    stop:0.3 rgba(255, 255, 255, {opacity * 0.7}),
+                    stop:0.6 rgba(255, 255, 255, {opacity * 0.4}),
+                    stop:1 rgba(255, 255, 255, {opacity * 0.1}));
+                border-radius: 40px;
+                border: 3px solid rgba(255, 255, 255, {intensity});
+            }}
+        """)
+        
+        # Add charging bolt symbol
+        self.setText("⚡")
+        self.setFont(QFont("Segoe UI", 32, QFont.Bold))
+        self.setAlignment(Qt.AlignCenter)
+
+
 class ChargingPopup(QWidget):
     def __init__(self, battery_percent, time_left, position="right"):
         super().__init__()
@@ -52,31 +120,9 @@ class ChargingPopup(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # Animation - Create NEW QMovie instance each time
-        self.label_anim = QLabel(self)
-        
-        # Check if GIF exists
-        gif_path = "charging.gif"
-        if not os.path.exists(gif_path):
-            # Fallback: show text if GIF not found
-            self.label_anim.setText("⚡")
-            self.label_anim.setFont(QFont("Segoe UI", 48))
-            self.label_anim.setStyleSheet("color: white;")
-            print(f"Warning: {gif_path} not found")
-        else:
-            # Create a NEW QMovie instance for each popup
-            self.movie = QMovie(gif_path)
-            
-            if self.movie.isValid():
-                self.label_anim.setMovie(self.movie)
-                self.movie.start()
-            else:
-                # Fallback if GIF is invalid
-                self.label_anim.setText("⚡")
-                self.label_anim.setFont(QFont("Segoe UI", 48))
-                self.label_anim.setStyleSheet("color: white;")
-                print(f"Warning: {gif_path} is not a valid GIF file")
-        
+        # Use custom animated charging widget instead of GIF
+        self.label_anim = AnimatedChargingWidget(self)
+        self.label_anim.start_animation()
         layout.addWidget(self.label_anim, alignment=Qt.AlignCenter)
 
         # Battery info text
@@ -123,10 +169,9 @@ class ChargingPopup(QWidget):
 
     def cleanup_and_close(self):
         """Cleanup resources before closing"""
-        # Stop and delete the movie to free resources
-        if hasattr(self, 'movie'):
-            self.movie.stop()
-            self.movie.deleteLater()
+        # Stop the animation
+        if hasattr(self, 'label_anim'):
+            self.label_anim.stop_animation()
         self.close()
 
 
@@ -137,32 +182,96 @@ class BatteryMonitor(QWidget):
         # Hide the monitor widget (we only need it for the timer)
         self.hide()
         
+        # Initialize system tray
+        self.setup_system_tray()
+        
         # Track charging state
         battery = psutil.sensors_battery()
         self.last_plugged = battery.power_plugged if battery else False
+        self.last_percent = int(battery.percent) if battery else 0
         
         # Setup timer to check battery status
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_battery)
-        self.timer.start(2000)  # Check every 2 seconds
+        self.timer.start(1000)  # Check every 1 second for better responsiveness
         
         # Keep track of active popup
         self.active_popup = None
         
-        print("Battery monitor started. Waiting for charger plug-in events...")
+        logger.info("Battery monitor started. Waiting for charger plug-in events...")
+        
+    def setup_system_tray(self):
+        """Setup system tray icon and menu"""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            logger.warning("System tray is not available")
+            return
+            
+        # Create tray icon
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        # Create a simple icon (battery symbol)
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawEllipse(4, 4, 24, 24)
+        painter.end()
+        
+        self.tray_icon.setIcon(QIcon(pixmap))
+        self.tray_icon.setToolTip("Laptop Charging Monitor")
+        
+        # Create context menu
+        menu = QMenu()
+        
+        # Status action
+        self.status_action = QAction("Status: Monitoring...", self)
+        self.status_action.setEnabled(False)
+        menu.addAction(self.status_action)
+        
+        menu.addSeparator()
+        
+        # Exit action
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.exit_app)
+        menu.addAction(exit_action)
+        
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.show()
+        
+        # Show message when started
+        self.tray_icon.showMessage(
+            "Charging Monitor",
+            "Battery monitoring started",
+            QSystemTrayIcon.Information,
+            2000
+        )
+        
+    def exit_app(self):
+        """Exit the application"""
+        logger.info("Exiting application...")
+        QApplication.quit()
 
     def check_battery(self):
         """Check battery status and show popup if just plugged in"""
         try:
             battery = psutil.sensors_battery()
             if not battery:
+                logger.warning("No battery information available")
                 return
             
             current_plugged = battery.power_plugged
+            current_percent = int(battery.percent)
+            
+            # Update tray status
+            if hasattr(self, 'status_action'):
+                status_text = f"Status: {'Charging' if current_plugged else 'Discharging'} - {current_percent}%"
+                self.status_action.setText(status_text)
             
             # Charger just plugged in
             if current_plugged and not self.last_plugged:
-                print("Charger plugged in! Showing popup...")
+                logger.info(f"Charger plugged in! Battery: {current_percent}%")
                 
                 # Clean up old popup if exists
                 if self.active_popup:
@@ -170,7 +279,7 @@ class BatteryMonitor(QWidget):
                     self.active_popup = None
                 
                 # Get battery info with retry for time estimation
-                percent = int(battery.percent)
+                percent = current_percent
                 time_left = format_time_left(battery.secsleft)
                 
                 # If time is not available yet, wait and retry
@@ -182,11 +291,34 @@ class BatteryMonitor(QWidget):
                     position = "center" if is_locked() else "right"
                     self.active_popup = ChargingPopup(percent, time_left, position)
                     self.active_popup.show()
+                    
+                # Show tray notification
+                if hasattr(self, 'tray_icon'):
+                    self.tray_icon.showMessage(
+                        "Charging Started",
+                        f"Battery: {percent}% • {time_left}",
+                        QSystemTrayIcon.Information,
+                        3000
+                    )
+            
+            # Charger just unplugged
+            elif not current_plugged and self.last_plugged:
+                logger.info(f"Charger unplugged! Battery: {current_percent}%")
+                
+                # Show tray notification for unplugging
+                if hasattr(self, 'tray_icon'):
+                    self.tray_icon.showMessage(
+                        "Charging Stopped",
+                        f"Battery: {current_percent}%",
+                        QSystemTrayIcon.Warning,
+                        2000
+                    )
             
             self.last_plugged = current_plugged
+            self.last_percent = current_percent
             
         except Exception as e:
-            print(f"Error checking battery: {e}")
+            logger.error(f"Error checking battery: {e}")
     
     def show_popup_with_retry(self, initial_percent):
         """Show popup after retrying to get accurate battery time"""
@@ -198,7 +330,7 @@ class BatteryMonitor(QWidget):
             percent = int(battery.percent)
             time_left = format_time_left(battery.secsleft)
             
-            print(f"Battery info: {percent}%, Time left: {time_left}, Raw seconds: {battery.secsleft}")
+            logger.info(f"Battery info: {percent}%, Time left: {time_left}, Raw seconds: {battery.secsleft}")
             
             # Determine position based on lock state
             position = "center" if is_locked() else "right"
@@ -208,22 +340,30 @@ class BatteryMonitor(QWidget):
             self.active_popup.show()
             
         except Exception as e:
-            print(f"Error showing popup with retry: {e}")
+            logger.error(f"Error showing popup with retry: {e}")
 
 
 def main():
-    # Check if charging.gif exists
-    if not os.path.exists("charging.gif"):
-        print("=" * 50)
-        print("WARNING: charging.gif not found!")
-        print("Please make sure charging.gif is in the same folder as this script.")
-        print("The popup will show a ⚡ emoji instead.")
-        print("=" * 50)
+    logger.info("Starting Laptop Charging Monitor...")
+    
+    # Check if we can access battery information
+    try:
+        battery = psutil.sensors_battery()
+        if not battery:
+            logger.error("No battery information available. This program requires a laptop with battery.")
+            return
+        logger.info(f"Battery detected: {int(battery.percent)}% - {'Charging' if battery.power_plugged else 'Discharging'}")
+    except Exception as e:
+        logger.error(f"Error accessing battery information: {e}")
+        return
     
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # Keep running when windows are closed
     
     # Create battery monitor
     monitor = BatteryMonitor()
+    
+    logger.info("Application started successfully. Running in background...")
     
     # Run the application
     sys.exit(app.exec_())
