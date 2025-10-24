@@ -1,28 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+
 a = Analysis(
     ['charging_popup.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets', 'psutil'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=None,
+    excludes=[],
     noarchive=False,
+    optimize=0,
 )
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='HPChargingMonitor',
@@ -38,5 +35,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico'
 )
