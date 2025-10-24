@@ -1,3 +1,16 @@
+"""
+Laptop Charging Monitor with Custom Time Estimation
+
+CONFIGURATION REQUIRED:
+Update the LAPTOP_CONFIG section below with your laptop's specifications:
+- battery_capacity_wh: Battery capacity in Watt-hours (check laptop specs or battery label)
+- charger_wattage: Charger power in Watts (check charger label)
+- charging_efficiency: Usually 0.85 (85%) for most laptops
+- model_name: Your laptop model name (for logging)
+
+Example: Dell XPS 13 might have 52Wh battery and 45W charger
+"""
+
 import sys
 import psutil
 import ctypes
@@ -19,6 +32,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Laptop-specific charging configuration
+# Update these values for your specific laptop model
+LAPTOP_CONFIG = {
+    "battery_capacity_wh": 56.04,  # HP Li-Polymer battery (56.04Wh, 11.58Vdc, 4646mAh)
+    "charger_wattage": 65,          # HP 65W charger (20VDC 3.25A)
+    "charging_efficiency": 0.85,    # Charging efficiency (85% is typical)
+    "model_name": "HP Laptop"        # HP laptop with 65W charger and 56.04Wh battery
+}
+
+def calculate_charging_time(battery_percent, battery_capacity_wh, charger_wattage, efficiency):
+    """
+    Calculate estimated charging time based on laptop specifications
+    
+    Args:
+        battery_percent: Current battery percentage (0-100)
+        battery_capacity_wh: Battery capacity in Watt-hours
+        charger_wattage: Charger power in Watts
+        efficiency: Charging efficiency (0.0-1.0)
+    
+    Returns:
+        Estimated time in seconds, or None if calculation not possible
+    """
+    try:
+        # Calculate remaining capacity to charge
+        remaining_percent = 100 - battery_percent
+        if remaining_percent <= 0:
+            return 0  # Already fully charged
+        
+        # Calculate remaining energy to charge (in Wh)
+        remaining_energy_wh = (remaining_percent / 100) * battery_capacity_wh
+        
+        # Calculate effective charging power (accounting for efficiency)
+        effective_power_w = charger_wattage * efficiency
+        
+        # Calculate time in hours
+        time_hours = remaining_energy_wh / effective_power_w
+        
+        # Convert to seconds
+        time_seconds = int(time_hours * 3600)
+        
+        logger.info(f"Charging calculation: {remaining_percent}% remaining, "
+                   f"{remaining_energy_wh:.1f}Wh to charge, "
+                   f"{effective_power_w:.1f}W effective power, "
+                   f"{time_hours:.2f}h estimated")
+        
+        return time_seconds
+        
+    except Exception as e:
+        logger.error(f"Error calculating charging time: {e}")
+        return None
+
 
 def is_locked():
     """Check if Windows is locked using proper API"""
@@ -35,10 +99,24 @@ def is_locked():
         return False
 
 
-def format_time_left(secs):
-    """Convert seconds to H:M format"""
+def format_time_left(secs, battery_percent=None):
+    """Convert seconds to H:M format, with custom calculation fallback"""
     if secs == psutil.POWER_TIME_UNLIMITED or secs < 0:
-        return "Estimating..."
+        # Try custom calculation if Windows can't provide time
+        if battery_percent is not None:
+            custom_time = calculate_charging_time(
+                battery_percent,
+                LAPTOP_CONFIG["battery_capacity_wh"],
+                LAPTOP_CONFIG["charger_wattage"],
+                LAPTOP_CONFIG["charging_efficiency"]
+            )
+            if custom_time is not None and custom_time > 0:
+                secs = custom_time
+            else:
+                return ""  # No time available
+        else:
+            return ""  # No time available
+    
     h, m = divmod(secs // 60, 60)
     if h > 0:
         return f"{h}h {m}m left"
@@ -127,7 +205,10 @@ class ChargingPopup(QWidget):
 
         # Battery info text
         self.label_text = QLabel(self)
-        self.label_text.setText(f"{battery_percent}% Charging • {time_left}")
+        if time_left:
+            self.label_text.setText(f"{battery_percent}% Charging • {time_left}")
+        else:
+            self.label_text.setText(f"{battery_percent}% Charging")
         self.label_text.setFont(QFont("Segoe UI", 14, QFont.Bold))
         self.label_text.setStyleSheet("color: white; background: transparent;")
         self.label_text.setAlignment(Qt.AlignCenter)
@@ -280,7 +361,7 @@ class BatteryMonitor(QWidget):
                 
                 # Get battery info with retry for time estimation
                 percent = current_percent
-                time_left = format_time_left(battery.secsleft)
+                time_left = format_time_left(battery.secsleft, percent)
                 
                 # If time is not available yet, wait and retry
                 if battery.secsleft == psutil.POWER_TIME_UNLIMITED or battery.secsleft < 0:
@@ -294,9 +375,13 @@ class BatteryMonitor(QWidget):
                     
                 # Show tray notification
                 if hasattr(self, 'tray_icon'):
+                    if time_left:
+                        message = f"Battery: {percent}% • {time_left}"
+                    else:
+                        message = f"Battery: {percent}%"
                     self.tray_icon.showMessage(
                         "Charging Started",
-                        f"Battery: {percent}% • {time_left}",
+                        message,
                         QSystemTrayIcon.Information,
                         3000
                     )
@@ -328,7 +413,7 @@ class BatteryMonitor(QWidget):
                 return
             
             percent = int(battery.percent)
-            time_left = format_time_left(battery.secsleft)
+            time_left = format_time_left(battery.secsleft, percent)
             
             logger.info(f"Battery info: {percent}%, Time left: {time_left}, Raw seconds: {battery.secsleft}")
             
@@ -345,6 +430,10 @@ class BatteryMonitor(QWidget):
 
 def main():
     logger.info("Starting Laptop Charging Monitor...")
+    logger.info(f"Configuration: {LAPTOP_CONFIG['model_name']} - "
+               f"{LAPTOP_CONFIG['battery_capacity_wh']}Wh battery, "
+               f"{LAPTOP_CONFIG['charger_wattage']}W charger, "
+               f"{LAPTOP_CONFIG['charging_efficiency']*100:.0f}% efficiency")
     
     # Check if we can access battery information
     try:
